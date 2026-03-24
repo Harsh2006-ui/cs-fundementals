@@ -1,0 +1,174 @@
+import streamlit as st
+import google.generativeai as genai
+
+# ------------------ CONFIG ------------------
+genai.configure(api_key="AIzaSyDBWE17On_70S3udjM82Anrbo8LuzV11I0")
+model = genai.GenerativeModel("gemini-1.5-flash")
+
+st.set_page_config(page_title="Adaptive AI Study Coach", layout="wide")
+
+# ------------------ HEADER ------------------
+st.title("📚 Adaptive AI Study Coach")
+st.caption("Learn → Practice → Improve (AI-Powered)")
+
+# ------------------ MEMORY ------------------
+if "chat" not in st.session_state:
+    st.session_state.chat = []
+
+if "weak_topics" not in st.session_state:
+    st.session_state.weak_topics = []
+
+if "scores" not in st.session_state:
+    st.session_state.scores = []
+
+if "current_topic" not in st.session_state:
+    st.session_state.current_topic = "General"
+
+if "difficulty" not in st.session_state:
+    st.session_state.difficulty = "Easy"
+
+# ------------------ LAYOUT ------------------
+col1, col2 = st.columns([2, 1])
+
+# ================== LEFT: CHAT ==================
+with col1:
+    st.subheader("🤖 AI Learning Chat")
+
+    for msg in st.session_state.chat:
+        with st.chat_message(msg["role"]):
+            st.write(msg["content"])
+
+    user_input = st.chat_input("Ask about Python, Math, etc...")
+
+    if user_input:
+        # Store user message
+        st.session_state.chat.append({"role": "user", "content": user_input})
+
+        # -------- TOPIC DETECTION --------
+        if "python" in user_input.lower():
+            st.session_state.current_topic = "Python"
+        elif "math" in user_input.lower():
+            st.session_state.current_topic = "Math"
+
+        with st.chat_message("user"):
+            st.write(user_input)
+
+        # AI Response
+        try:
+            response = model.generate_content(user_input)
+            reply = response.text
+        except Exception as e:
+            reply = "Sorry, I couldn't process that. Please try again."
+            
+
+        st.session_state.chat.append({"role": "assistant", "content": reply})
+
+        with st.chat_message("assistant"):
+            st.write(reply)
+
+# ================== RIGHT: QUIZ ==================
+with col2:
+    st.subheader("🧠 Adaptive Quiz")
+
+    if st.button("Generate Quiz"):
+        prompt = f"""
+        Generate 3 {st.session_state.difficulty} level questions on {st.session_state.current_topic}.
+        """
+
+        try:
+            quiz = model.generate_content(prompt)
+            st.session_state.quiz = quiz.text.split("\n")
+        except:
+            st.session_state.quiz = [
+                "1. What is a list?",
+                "2. What is a tuple?",
+                "3. What is 2 + 2?"
+            ]
+
+    if "quiz" in st.session_state:
+        for q in st.session_state.quiz:
+            if q.strip():
+                st.write(q)
+
+        answers = st.text_area("Your Answers")
+
+        if st.button("Submit Answers"):
+            check_prompt = f"""
+            Evaluate answers:
+            {answers}
+
+            Return:
+            Score out of 3
+            Weak topic (one word)
+            """
+
+            try:
+                result = model.generate_content(check_prompt)
+                feedback = result.text
+            except:
+                feedback = "Score: 1/3\nWeak topic: Basics"
+
+            st.write("📊 Feedback:")
+            st.write(feedback)
+
+            # -------- SCORE EXTRACTION --------
+            if "3" in feedback:
+                st.session_state.scores.append(3)
+            elif "2" in feedback:
+                st.session_state.scores.append(2)
+            else:
+                st.session_state.scores.append(1)
+
+            # -------- WEAK AREA --------
+            if "weak" in feedback.lower():
+                st.session_state.weak_topics.append(feedback)
+
+            # -------- DIFFICULTY ADAPTATION --------
+            last_score = st.session_state.scores[-1]
+
+            if last_score >= 3:
+                st.session_state.difficulty = "Hard"
+            elif last_score == 2:
+                st.session_state.difficulty = "Medium"
+            else:
+                st.session_state.difficulty = "Easy"
+
+# ================== SIDEBAR ==================
+st.sidebar.title("📈 Learning Insights")
+
+# Topic + Difficulty
+st.sidebar.write("📌 Current Topic:", st.session_state.current_topic)
+st.sidebar.write("⚙️ Difficulty:", st.session_state.difficulty)
+
+# Progress Chart
+if st.session_state.scores:
+    st.sidebar.line_chart(st.session_state.scores)
+
+# Weak Areas
+if st.session_state.weak_topics:
+    st.sidebar.write("⚠️ Weak Areas:")
+    for w in st.session_state.weak_topics:
+        st.sidebar.write(w)
+
+    st.sidebar.write("👉 Recommendation: Revise basics")
+else:
+    st.sidebar.write("🔥 You're doing great!")
+
+# ------------------ LEVEL BADGE ------------------
+if st.session_state.scores:
+    avg = sum(st.session_state.scores) / len(st.session_state.scores)
+
+    if avg >= 2.5:
+        level = "Advanced 🧠"
+    elif avg >= 1.5:
+        level = "Intermediate ⚡"
+    else:
+        level = "Beginner 🌱"
+
+    st.sidebar.markdown("---")
+    st.sidebar.write("🏆 Learning Level:")
+    st.sidebar.success(level)
+
+# Footer
+st.sidebar.markdown("---")
+st.sidebar.caption("Built for Hackathon 🚀")
